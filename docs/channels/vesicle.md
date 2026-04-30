@@ -17,12 +17,22 @@ Configure OpenClaw with the Vesicle server URL and bearer token:
 
 ```json5
 {
+  messages: {
+    groupChat: {
+      // Required if normal assistant replies should post back into iMessage groups.
+      visibleReplies: "automatic",
+    },
+  },
   channels: {
     vesicle: {
       enabled: true,
       serverUrl: "http://127.0.0.1:1234",
       authToken: "example-token",
       webhookSecret: "shared-hmac-secret",
+      dmPolicy: "allowlist",
+      allowFrom: ["+15551234567"],
+      groupPolicy: "allowlist",
+      groupAllowFrom: ["any;+;messages-group-guid"],
     },
   },
 }
@@ -82,9 +92,40 @@ request body using `webhookSecret`.
 Unsupported BlueBubbles-only features remain disabled on this channel: reactions,
 edits, unsend, effects, attachments, and group management.
 
+## Group Replies
+
+Group chats use OpenClaw's shared group-visible-reply policy. By default, normal
+group/channel final replies are kept private and visible room output requires the
+message tool. For Vesicle group chats that should behave like an automated iMessage
+participant, set:
+
+```json5
+{
+  messages: {
+    groupChat: {
+      visibleReplies: "automatic",
+    },
+  },
+}
+```
+
+After changing this setting, restart the gateway if hot reload is not active. The
+group chat must still pass `channels.vesicle.groupPolicy` and `groupAllowFrom`.
+Allowlist entries can include the full Messages chat GUID (`any;+;...` or
+`iMessage;+;...`) and the bare GUID suffix.
+
 ## Migration Notes
 
 `channels.bluebubbles` can continue to run against Vesicle's compatibility routes
 while `channels.vesicle` is introduced. To remove BlueBubbles from the required stack,
 cut over inbound routing to the native Vesicle webhook and remove the compatibility
-channel once all send targets use `chat_guid:<GUID>`.
+channel once all send targets use `chat_guid:<GUID>`. Verify with:
+
+```bash
+openclaw plugins inspect vesicle --json
+openclaw plugins inspect bluebubbles --json
+curl -sS -X POST -o /dev/null -w '%{http_code}\n' http://127.0.0.1:18789/vesicle-webhook
+```
+
+An unsigned empty POST to `/vesicle-webhook` should be rejected before dispatch; a
+disabled BlueBubbles plugin should leave `/bluebubbles-webhook` inactive.
